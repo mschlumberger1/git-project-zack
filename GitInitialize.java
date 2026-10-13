@@ -7,7 +7,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.List;
 
 public class GitInitialize {
 
@@ -52,9 +54,12 @@ public class GitInitialize {
     public static void main(String[] args) {
         GitInitialize git = new GitInitialize();
         try {
-            System.out.println(hashFile("Hello.txt"));
-            git.createBlob("Hello.txt");
-            git.addEntry("Hello.txt");
+            // System.out.println(hashFile("Hello.txt"));
+            // git.createBlob("Hello.txt");
+            // git.createBlob("testingIndex.txt");
+            // git.addEntry("Hello.txt");
+            // git.addEntry("testingIndex.txt");
+            git.addEntry("testingDuplicate.txt");
         } catch (IOException e) {
             System.out.println("Hashing Error: " + e);
         }
@@ -81,12 +86,18 @@ public class GitInitialize {
     public void createBlob(String filePath) throws IOException {
         String hash = hashFile(filePath);
         File hashFile = new File(objects, hash);
-        hashFile.createNewFile();
+        if (!hashFile.exists()) {
+            hashFile.createNewFile();
+        }
         FileWriter hashWriter = new FileWriter(hashFile.toPath().toString());
         BufferedReader hashReader = new BufferedReader(new FileReader(filePath));
         String contents = hashReader.readLine();
+        if (contents != null) {
+            hashWriter.write(contents);
+            contents = hashReader.readLine();
+        }
         while (contents != null) {
-            hashWriter.write(contents + "\n");
+            hashWriter.write("\n" + contents);
             contents = hashReader.readLine();
         }
         hashReader.close();
@@ -96,13 +107,42 @@ public class GitInitialize {
 
     public void addEntry(String filePath) throws IOException {
         String hash = hashFile(filePath);
-        FileWriter hashWriter = new FileWriter(index.toPath().toString());
+        List<String> lines = new ArrayList<>();
+        String line = "";
         BufferedReader indexReader = new BufferedReader(new FileReader(index.toPath().toString()));
-        if (indexReader.readLine() == null) {
-            hashWriter.write(hash + " " + filePath);
-        } else {
-            hashWriter.write("\n" + hash + " " + filePath);
+        while ((line = indexReader.readLine()) != null) {
+            lines.add(line);
         }
+        List<String> indexEntries = new ArrayList<>();
+        FileWriter hashWriter = new FileWriter(index.toPath().toString());
+        if ( lines == null || lines.isEmpty()) {
+            indexEntries.add(hash + " " + filePath);
+        } else {
+            // for loop is only when lines is not null or empty
+            boolean existsPath = false;
+            for (int i = 0; i < lines.size(); i++) {
+                int indexHash = lines.get(i).indexOf(" ");
+                if (lines.get(i).substring(indexHash + 1).equals(filePath)) {
+                    existsPath = true;
+                    indexEntries.add(hash + " " + filePath);
+                } else {
+                    indexEntries.add(lines.get(i));
+                }
+            }
+            if (!existsPath) {
+                indexEntries.add(hash + " " + filePath);
+            }
+
+        }
+        String total = "";
+        for (int j = 0; j < indexEntries.size(); j++) {
+            if (j == 0) {
+                total += indexEntries.get(j);
+            } else {
+                total += "\n" + indexEntries.get(j);
+            }
+        }
+        hashWriter.write(total);
         hashWriter.close();
         indexReader.close();
     }
