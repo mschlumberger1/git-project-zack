@@ -1,0 +1,5 @@
+sha1test
+testing multiple lines
+and seeing whether the if statement works
+testing if this works
+updating to make sure hash changes in index

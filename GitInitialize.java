@@ -59,7 +59,8 @@ public class GitInitialize {
             // git.createBlob("testingIndex.txt");
             // git.addEntry("Hello.txt");
             // git.addEntry("testingIndex.txt");
-            git.addEntry("testingDuplicate.txt");
+            git.addEntry("testFolder/testingDuplicate.txt");
+            git.addEntry("testingDuplicateCopy.txt");
         } catch (IOException e) {
             System.out.println("Hashing Error: " + e);
         }
@@ -115,21 +116,24 @@ public class GitInitialize {
         }
         List<String> indexEntries = new ArrayList<>();
         FileWriter hashWriter = new FileWriter(index.toPath().toString());
+        // case 1: when nothing is in index
         if ( lines == null || lines.isEmpty()) {
             indexEntries.add(hash + " " + filePath);
         } else {
-            // for loop is only when lines is not null or empty
             boolean existsPath = false;
             for (int i = 0; i < lines.size(); i++) {
                 int indexHash = lines.get(i).indexOf(" ");
                 if (lines.get(i).substring(indexHash + 1).equals(filePath)) {
                     existsPath = true;
+                    // case 2: same path, different hash
                     indexEntries.add(hash + " " + filePath);
                 } else {
+                    // case 3: same path, same hash
                     indexEntries.add(lines.get(i));
                 }
             }
             if (!existsPath) {
+                // case 4: new path + hash
                 indexEntries.add(hash + " " + filePath);
             }
 
