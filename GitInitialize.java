@@ -3,6 +3,7 @@ import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -54,13 +55,18 @@ public class GitInitialize {
     public static void main(String[] args) {
         GitInitialize git = new GitInitialize();
         try {
-            // System.out.println(hashFile("Hello.txt"));
-            // git.createBlob("Hello.txt");
-            // git.createBlob("testingIndex.txt");
-            // git.addEntry("Hello.txt");
-            // git.addEntry("testingIndex.txt");
-            git.addEntry("testFolder/testingDuplicate.txt");
-            git.addEntry("testingDuplicateCopy.txt");
+            System.out.println(hashFile("Hello.txt"));
+            git.createBlob("Hello.txt");
+            git.createBlob("testFolder/file1.txt");
+            git.createBlob("testFolder/file2.txt");
+            git.addEntry("Hello.txt");
+            git.addEntry("testFolder/file1.txt");
+            git.addEntry("testFolder/file2.txt");
+            ArrayList<String> workingList = new ArrayList<>();
+            workingList.add("blob 0a4d55a8d778e5022fab701977c5d840bbc486d0 Hello.txt");
+            workingList.add("blob 31a160541e2078032acad6161a920951e50b5747 testFolder/file1.txt");
+            workingList.add("blob ac182d3f19d9029668a47967a42029fb874c861f testFolder/file2.txt");
+            System.out.println(createTree(workingList, "testFolder"));
         } catch (IOException e) {
             System.out.println("Hashing Error: " + e);
         }
@@ -117,7 +123,7 @@ public class GitInitialize {
         List<String> indexEntries = new ArrayList<>();
         FileWriter hashWriter = new FileWriter(index.toPath().toString());
         // case 1: when nothing is in index
-        if ( lines == null || lines.isEmpty()) {
+        if (lines == null || lines.isEmpty()) {
             indexEntries.add(hash + " " + filePath);
         } else {
             boolean existsPath = false;
@@ -151,6 +157,42 @@ public class GitInitialize {
         indexReader.close();
     }
 
+    public static String createTree(ArrayList<String> workingList, String dirPath)
+            throws IOException {
+        StringBuilder sb = new StringBuilder();
+        String hash = "";
+        for (String line : workingList) {
+            String path = line.substring(line.lastIndexOf(' ') + 1);
+            if (path.startsWith(dirPath + "/")) {
+                String revisedLine = line.substring(0, line.lastIndexOf(' ')) + " "
+                        + line.substring(line.lastIndexOf('/') + 1);
+                sb.append(revisedLine + "\n");
+            }
+        }
+        hash = hashContent(sb.toString());
+        FileWriter treeWriter = new FileWriter("git/objects/" + hash);
+        for (int i = 0; i < sb.length(); i++) {
+            treeWriter.write(sb.charAt(i));
+        }
+        treeWriter.close();
+        return hash;
+    }
+
+    // helper methods
+    public static String hashContent(String content) {
+        MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-1");
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-1 is not available", e);
+        }
+        byte[] byteArray = content.getBytes(StandardCharsets.UTF_8);
+        byte[] hash = digest.digest(byteArray);
+        return HexFormat.of().formatHex(hash);
+    }
+
+
+    // getters and setters
     /**
      * @return the git
      */
