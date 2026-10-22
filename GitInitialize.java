@@ -66,7 +66,6 @@ public class GitInitialize {
             workingList.add("blob 0a4d55a8d778e5022fab701977c5d840bbc486d0 Hello.txt");
             workingList.add("blob 31a160541e2078032acad6161a920951e50b5747 testFolder/file1.txt");
             workingList.add("blob ac182d3f19d9029668a47967a42029fb874c861f testFolder/file2.txt");
-            System.out.println(createTree(workingList, "testFolder"));
         } catch (IOException e) {
             System.out.println("Hashing Error: " + e);
         }
@@ -157,28 +156,128 @@ public class GitInitialize {
         indexReader.close();
     }
 
-    public static String createTree(ArrayList<String> workingList, String dirPath)
-            throws IOException {
-        StringBuilder sb = new StringBuilder();
-        String hash = "";
-        for (String line : workingList) {
-            String path = line.substring(line.lastIndexOf(' ') + 1);
-            if (path.startsWith(dirPath + "/")) {
-                String revisedLine = line.substring(0, line.lastIndexOf(' ')) + " "
-                        + line.substring(line.lastIndexOf('/') + 1);
-                sb.append(revisedLine + "\n");
-            }
+    // 3.2 - creates initial working list w/blobs
+    public static ArrayList<String> createWorkingList(File index) throws IOException {
+        ArrayList<String> workingList = new ArrayList<String>();
+        BufferedReader indexReader = new BufferedReader(new FileReader(index.toPath().toString()));
+        String line = "";
+        while ((line = indexReader.readLine()) != null) {
+            workingList.add("blob " + line);
         }
-        hash = hashContent(sb.toString());
-        FileWriter treeWriter = new FileWriter("git/objects/" + hash);
-        for (int i = 0; i < sb.length(); i++) {
-            treeWriter.write(sb.charAt(i));
-        }
-        treeWriter.close();
-        return hash;
+        indexReader.close();
+        return workingList;
     }
 
-    // helper methods
+    // 3.2 (but changed in 3.3) - takes a directory path and creates a tree of its direct
+    // descendants
+    // note that this was tested when i made it in 3.2 but didn't have a chance to test the new
+    // version sorry
+    public String createTree(ArrayList<String> workingList, String dirPath) throws IOException {
+        ArrayList<String> trees = new ArrayList<>();
+        for (String line : workingList) {
+            String type = line.substring(0, line.indexOf(' '));
+            String hash = line.substring(line.indexOf(' ') + 1, line.lastIndexOf(' '));
+            String path = line.substring(line.lastIndexOf(' ') + 1);
+            if (getParent(path).equals(dirPath)) {
+                String name = path.substring(path.lastIndexOf('/') + 1);
+                trees.add(type + " " + hash + " " + name);
+            }
+        }
+        String treeString = "";
+        for (int i = 0; i < trees.size(); i++) {
+            treeString += trees.get(i);
+            if (i < trees.size() - 1) {
+                treeString += "\n";
+            }
+        }
+        String treeHash = hashContent(treeString);
+        File treeFile = new File(objects, treeHash);
+        if (!treeFile.exists()) {
+            FileWriter treeWriter = new FileWriter(treeFile);
+            treeWriter.write(treeString);
+            treeWriter.close();
+        }
+        return treeHash;
+    }
+
+    // 3.3 - groups subdirectories
+    public static ArrayList<String> sortWorkingList(ArrayList<String> workingList) {
+        for (int i = 0; i < workingList.size(); i++) {
+            if (!workingList.get(i).substring(0, 5).equals("blob ")
+                    && !workingList.get(i).substring(0, 5).equals("tree ")) {
+                workingList.set(i, "blob " + workingList.get(i));
+            }
+        }
+        for (int i = 0; i < workingList.size(); i++) {
+            for (int j = i + 1; j < workingList.size(); j++) {
+                String lineOne =
+                        workingList.get(i).substring(workingList.get(i).lastIndexOf(' ') + 1);
+                String lineTwo =
+                        workingList.get(j).substring(workingList.get(j).lastIndexOf(' ') + 1);
+                if (slashes(lineOne) < slashes(lineTwo)) {
+                    String tempSave = workingList.get(i);
+                    workingList.set(i, workingList.get(j));
+                    workingList.set(j, tempSave);
+                } else if (slashes(lineOne) == slashes(lineTwo)) {
+                    if (lineOne.compareTo(lineTwo) > 0) {
+                        String tempSave = workingList.get(i);
+                        workingList.set(i, workingList.get(j));
+                        workingList.set(j, tempSave);
+                    }
+                }
+            }
+        }
+        return workingList;
+    }
+
+    // 3.3 - this is the recursive method that does everything: it takes the deepest directory and
+    // builds up trees from there until there is only one root tree
+    public String compressWorkingList(ArrayList<String> workingList) throws IOException {
+        String dirPath = findLeafMostDirectory(workingList);
+        // base case
+        if (dirPath.equals("")) {
+            return createTree(workingList, "");
+        }
+        // non base case
+        String treeHash = createTree(workingList, dirPath);
+        collapseWorkingList(workingList, dirPath, treeHash);
+        return compressWorkingList(workingList);
+    }
+
+    // helper methods that are explicitly (or at least basically) mentioned in the instructions
+
+    // 3.3 - finds the deepest directory
+    public String findLeafMostDirectory(ArrayList<String> workingList) {
+        String deepestDir = "";
+        int deepest = -1;
+        for (String line : workingList) {
+            String path = line.substring(line.lastIndexOf(" ") + 1);
+            if (getParent(path) != "") {
+                if (slashes(path) > deepest) {
+                    deepest = slashes(path);
+                    deepestDir = getParent(path);
+                }
+            }
+        }
+        return deepestDir;
+    }
+
+    // 3.3 - condenses working list to just have the tree already made vs multiple blobs
+    public void collapseWorkingList(ArrayList<String> workingList, String dirPath,
+            String treeHash) {
+        for (int i = workingList.size() - 1; i >= 0; i--) {
+            String line = workingList.get(i);
+            String path = line.substring(line.lastIndexOf(' ') + 1);
+            if (getParent(path).equals(dirPath)) {
+                workingList.remove(i);
+            }
+        }
+        workingList.add("tree " + treeHash + " " + dirPath);
+    }
+
+
+    // extra helper methods
+    // variation of hashFile that just uses content
     public static String hashContent(String content) {
         MessageDigest digest;
         try {
@@ -190,6 +289,27 @@ public class GitInitialize {
         byte[] hash = digest.digest(byteArray);
         return HexFormat.of().formatHex(hash);
     }
+
+    // finds the number of slashes (how deep) a directory is
+    public static int slashes(String path) {
+        int count = 0;
+        for (int i = 0; i < path.length(); i++) {
+            if (path.charAt(i) == '/') {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    // finds the direct parent of a file
+    public String getParent(String path) {
+        int slash = path.lastIndexOf("/");
+        if (slash == -1) {
+            return "";
+        }
+        return path.substring(0, slash);
+    }
+
 
 
     // getters and setters
